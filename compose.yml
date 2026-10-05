@@ -1,0 +1,46 @@
+# Guestbook stack: the SvelteKit app plus the PostgreSQL database it talks to.
+#
+# Credentials are declared here rather than in the image so the same image can
+# be deployed against any database. For a real deployment these would come
+# from a secret store or an .env file rather than being committed.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      # "db" resolves to the database service over the compose network.
+      DATABASE_URL: postgres://guestbook:guestbook_pw@db:5432/guestbook
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        # Wait for the healthcheck below, not just for the container to exist,
+        # so the app never starts against a database that can't accept
+        # connections yet.
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: guestbook
+      POSTGRES_PASSWORD: guestbook_pw
+      POSTGRES_DB: guestbook
+    volumes:
+      # Named volume, so entries survive docker compose down / up.
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U guestbook -d guestbook"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    # No ports: the database is only reachable from inside the compose network.
+    restart: unless-stopped
+
+volumes:
+  db-data:
